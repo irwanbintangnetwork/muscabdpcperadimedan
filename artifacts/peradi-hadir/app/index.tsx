@@ -2,10 +2,10 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -14,9 +14,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
+
+const OktaLogo = require("../assets/images/icon.png");
 
 export default function LoginScreen() {
   const { login } = useApp();
@@ -50,26 +53,26 @@ export default function LoginScreen() {
   return (
     <LinearGradient
       colors={["#1B3A6B", "#0D2147"]}
-      style={[styles.container, { paddingTop: insets.top + 20 }]}
+      style={[styles.container, { paddingTop: insets.top }]}
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.inner}
       >
+        {/* Logo + Title */}
         <View style={styles.logoSection}>
-          <View style={styles.logoRing}>
-            <Feather name="shield" size={44} color="#C9A84C" />
+          <View style={styles.logoWrapper}>
+            <Image source={OktaLogo} style={styles.logo} resizeMode="contain" />
           </View>
-          <Text style={styles.appTitle}>PERADI HADIR</Text>
-          <Text style={styles.appSubtitle}>Sistem Presensi Digital</Text>
+          <Text style={styles.appTitle}>MUSCAB DPC PERADI SAI</Text>
+          <Text style={styles.appTitleSub}>MEDAN</Text>
+          <Text style={styles.appSubtitle}>
+            Musyawarah Cabang DPC PERADI SAI Medan
+          </Text>
         </View>
 
-        <View
-          style={[
-            styles.formCard,
-            { borderRadius: colors.radius * 2 },
-          ]}
-        >
+        {/* Form Card */}
+        <View style={[styles.formCard, { borderRadius: colors.radius * 2 }]}>
           <Text style={[styles.formTitle, { color: "#1B3A6B" }]}>
             Login Panitia
           </Text>
@@ -82,10 +85,7 @@ export default function LoginScreen() {
                 placeholder="Username"
                 placeholderTextColor={colors.mutedForeground}
                 value={username}
-                onChangeText={(t) => {
-                  setUsername(t);
-                  setError("");
-                }}
+                onChangeText={(t) => { setUsername(t); setError(""); }}
                 autoCapitalize="none"
                 returnKeyType="next"
               />
@@ -98,10 +98,7 @@ export default function LoginScreen() {
                 placeholder="Password"
                 placeholderTextColor={colors.mutedForeground}
                 value={password}
-                onChangeText={(t) => {
-                  setPassword(t);
-                  setError("");
-                }}
+                onChangeText={(t) => { setPassword(t); setError(""); }}
                 secureTextEntry={!showPassword}
                 returnKeyType="done"
                 onSubmitEditing={handleLogin}
@@ -150,6 +147,13 @@ export default function LoginScreen() {
             Default: admin / peradi2024
           </Text>
         </View>
+
+        {/* Credit */}
+        <View style={styles.creditSection}>
+          <Text style={styles.creditText}>Dikembangkan oleh</Text>
+          <Text style={styles.creditName}>Irwan, S.H.</Text>
+          <Text style={styles.creditOrg}>DPC PERADI SAI Medan</Text>
+        </View>
       </KeyboardAvoidingView>
     </LinearGradient>
   );
@@ -163,39 +167,58 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 24,
     justifyContent: "center",
-    gap: 32,
-    paddingBottom: Platform.OS === "web" ? 34 : 0,
+    gap: 24,
+    paddingBottom: Platform.OS === "web" ? 20 : 0,
+    paddingTop: 16,
   },
   logoSection: {
     alignItems: "center",
-    gap: 10,
+    gap: 6,
   },
-  logoRing: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 2,
-    borderColor: "rgba(201,168,76,0.4)",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
+  logoWrapper: {
+    width: 96,
+    height: 96,
+    borderRadius: 18,
+    overflow: "hidden",
+    backgroundColor: "#fff",
+    marginBottom: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  logo: {
+    width: 96,
+    height: 96,
   },
   appTitle: {
-    fontSize: 28,
+    fontSize: 22,
     fontFamily: "Inter_700Bold",
     color: "#FFFFFF",
-    letterSpacing: 3,
+    letterSpacing: 2,
+    textAlign: "center",
+  },
+  appTitleSub: {
+    fontSize: 26,
+    fontFamily: "Inter_700Bold",
+    color: "#C9A84C",
+    letterSpacing: 4,
+    textAlign: "center",
+    marginTop: -4,
   },
   appSubtitle: {
-    fontSize: 14,
+    fontSize: 12,
     fontFamily: "Inter_400Regular",
-    color: "rgba(255,255,255,0.65)",
-    letterSpacing: 1,
+    color: "rgba(255,255,255,0.60)",
+    letterSpacing: 0.5,
+    textAlign: "center",
+    marginTop: 2,
   },
   formCard: {
     backgroundColor: "#FFFFFF",
-    padding: 28,
-    gap: 16,
+    padding: 24,
+    gap: 14,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
@@ -203,12 +226,12 @@ const styles = StyleSheet.create({
     elevation: 16,
   },
   formTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontFamily: "Inter_700Bold",
-    marginBottom: 4,
+    marginBottom: 2,
   },
   fieldGroup: {
-    gap: 12,
+    gap: 10,
   },
   inputWrapper: {
     flexDirection: "row",
@@ -236,10 +259,10 @@ const styles = StyleSheet.create({
   },
   loginBtn: {
     overflow: "hidden",
-    marginTop: 4,
+    marginTop: 2,
   },
   loginBtnGrad: {
-    paddingVertical: 15,
+    paddingVertical: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -255,5 +278,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: "Inter_400Regular",
     textAlign: "center",
+  },
+  creditSection: {
+    alignItems: "center",
+    gap: 2,
+    paddingBottom: 8,
+  },
+  creditText: {
+    color: "rgba(255,255,255,0.45)",
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+  },
+  creditName: {
+    color: "#C9A84C",
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 0.5,
+  },
+  creditOrg: {
+    color: "rgba(255,255,255,0.45)",
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
   },
 });

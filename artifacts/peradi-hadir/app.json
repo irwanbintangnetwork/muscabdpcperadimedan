@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Peradi Hadir",
+    "name": "MUSCAB DPC PERADI SAI MEDAN",
     "slug": "peradi-hadir",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -15,12 +15,14 @@
     },
     "ios": {
       "supportsTablet": false,
+      "bundleIdentifier": "com.peradisai.muscab",
       "infoPlist": {
         "NSCameraUsageDescription": "Aplikasi memerlukan kamera untuk memindai barcode KTA Peradi",
         "NSPhotoLibraryUsageDescription": "Aplikasi memerlukan akses galeri untuk mengimpor foto"
       }
     },
     "android": {
+      "package": "com.peradisai.muscab",
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
