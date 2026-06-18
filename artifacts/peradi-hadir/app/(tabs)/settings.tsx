@@ -122,6 +122,30 @@ function SettingRow({
   );
 }
 
+const DEMO_MEMBERS: Member[] = [
+  {
+    nia: "24.10136",
+    name: "Irwan, S.H.",
+    photoUrl: "",
+    urlId: "24.10136",
+    status: "Aktif",
+  },
+  {
+    nia: "24.10740",
+    name: "Supriono, S.H.",
+    photoUrl: "",
+    urlId: "24.10740",
+    status: "Aktif",
+  },
+  {
+    nia: "23.10315",
+    name: "Endang Surya, S.H.",
+    photoUrl: "",
+    urlId: "23.10315",
+    status: "Tidak Aktif",
+  },
+];
+
 export default function SettingsScreen() {
   const {
     importMembers,
@@ -204,7 +228,14 @@ export default function SettingsScreen() {
             row.id ||
             nia
           ).trim();
-          return { nia, name, photoUrl, urlId };
+          const status = (
+            row.STATUS ||
+            row.status ||
+            row.Status ||
+            row.STATUS_KEANGGOTAAN ||
+            "Aktif"
+          ).trim();
+          return { nia, name, photoUrl, urlId, status };
         })
         .filter((m) => m.nia && m.name);
 
@@ -431,14 +462,38 @@ export default function SettingsScreen() {
           value={
             members.length > 0
               ? `${members.length} anggota dimuat`
-              : "Belum ada data • Format: NIA, NAMA, FOTO_URL, URL_ID"
+              : "Belum ada data"
           }
           onPress={handleImportCSV}
           badge={members.length > 0 ? members.length.toString() : undefined}
         />
+        <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
+          <SettingRow
+            icon="database"
+            label="Muat Data Demo"
+            value="Irwan (Aktif), Supriono (Aktif), Endang Surya (Tidak Aktif)"
+            onPress={() => {
+              Alert.alert(
+                "Muat Data Demo",
+                "Ini akan memuat 3 anggota demo termasuk 1 yang Tidak Aktif untuk pengujian. Lanjutkan?",
+                [
+                  { text: "Batal", style: "cancel" },
+                  {
+                    text: "Muat",
+                    onPress: async () => {
+                      await importMembers(DEMO_MEMBERS);
+                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                      Alert.alert("Berhasil", "3 anggota demo berhasil dimuat.\n\n• Irwan, S.H. (Aktif)\n• Supriono, S.H. (Aktif)\n• Endang Surya, S.H. (Tidak Aktif)\n\nCoba scan NIA di tab Scan untuk melihat perbedaannya.");
+                    },
+                  },
+                ]
+              );
+            }}
+          />
+        </View>
       </View>
 
-      {/* Template CSV */}
+      {/* Format CSV */}
       <View
         style={[
           styles.infoBox,
@@ -452,13 +507,13 @@ export default function SettingsScreen() {
         <Feather name="info" size={16} color="#1B3A6B" />
         <View style={{ flex: 1 }}>
           <Text style={[styles.infoTitle, { color: "#1B3A6B" }]}>
-            Format CSV yang diterima:
+            Format CSV (barcode: peradi.org/ktpa?nia=...):
           </Text>
           <Text style={[styles.infoText, { color: "#1E40AF" }]}>
-            {"NIA,NAMA,FOTO_URL,URL_ID\n24.10136,Irwan SH,https://...,12345"}
+            {"NIA,NAMA,FOTO_URL,URL_ID,STATUS\n24.10136,Irwan SH,,24.10136,Aktif\n24.10740,Supriono SH,,24.10740,Aktif\n23.10315,Endang SH,,23.10315,Tidak Aktif"}
           </Text>
           <Text style={[styles.infoNote, { color: "#3B82F6" }]}>
-            FOTO_URL dan URL_ID bersifat opsional. Jika URL_ID kosong, NIA digunakan sebagai pencocokan.
+            STATUS wajib diisi: "Aktif" atau "Tidak Aktif". Anggota tidak aktif akan ditolak saat scan.
           </Text>
         </View>
       </View>
