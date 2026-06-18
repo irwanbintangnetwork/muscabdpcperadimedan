@@ -17,11 +17,24 @@ import { MemberCard } from "@/components/MemberCard";
 import { useApp } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 
+/**
+ * Extract NIA/ID from the barcode URL.
+ * Supports:
+ *   - https://www.peradi.org/ktpa?nia=24.10136  → "24.10136"
+ *   - https://peradisai.org/member/12345         → "12345"
+ *   - Raw NIA string                             → as-is
+ */
 function extractIdFromUrl(raw: string): string {
   try {
-    const url = new URL(raw.includes("://") ? raw : `https://${raw}`);
+    const trimmed = raw.trim();
+    const url = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`);
+    // Peradi.org format: ?nia=...
+    const niaParam = url.searchParams.get("nia");
+    if (niaParam) return niaParam.trim();
+    // Fallback: last non-empty path segment
     const parts = url.pathname.split("/").filter(Boolean);
-    return parts[parts.length - 1] || raw;
+    if (parts.length > 0) return parts[parts.length - 1];
+    return raw;
   } catch {
     return raw;
   }
@@ -34,6 +47,7 @@ interface ModalState {
   photoUrl: string;
   isDuplicate: boolean;
   isUnknown: boolean;
+  isInactive: boolean;
   scannedUrl: string;
   method: "offline" | "webview" | "manual";
 }
@@ -45,6 +59,7 @@ const INITIAL_MODAL: ModalState = {
   photoUrl: "",
   isDuplicate: false,
   isUnknown: false,
+  isInactive: false,
   scannedUrl: "",
   method: "offline",
 };
@@ -62,25 +77,26 @@ export default function ScannerScreen() {
 
   const presentCount = attendance.length;
 
-  const handleBarcodeScan = useCallback(
-    ({ data }: { data: string }) => {
-      if (cooldown.current || modal.visible) return;
-      if (data === lastScanned) return;
-      cooldown.current = true;
-      setLastScanned(data);
-      setTimeout(() => {
-        cooldown.current = false;
-      }, 2000);
-
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-      const urlId = extractIdFromUrl(data);
-      const member = findMemberByUrlId(urlId);
+  const processId = useCallback(
+    (rawId: string, rawUrl: string) => {
+      const extracted = extractIdFromUrl(rawId);
+      const member = findMemberByUrlId(extracted);
 
       if (member) {
-        const isDuplicate = attendance.some(
-          (r) => r.nia.replace(/[.\-\s]/g, "") === member.nia.replace(/[.\-\s]/g, "")
-        );
+        // Check inactive status
+        const isInactive =
+          member.status &&
+          member.status.trim().toLowerCase() !== "aktif" &&
+          member.status.trim() !== "";
+
+        const isDuplicate =
+          !isInactive &&
+          attendance.some(
+            (r) =>
+              r.nia.replace(/[.\-\s]/g, "") ===
+              member.nia.replace(/[.\-\s]/g, "")
+          );
+
         setModal({
           visible: true,
           name: member.name,
@@ -88,29 +104,48 @@ export default function ScannerScreen() {
           photoUrl: member.photoUrl,
           isDuplicate,
           isUnknown: false,
-          scannedUrl: data,
+          isInactive: !!isInactive,
+          scannedUrl: rawUrl,
           method: "offline",
         });
       } else {
         setModal({
           visible: true,
           name: "",
-          nia: urlId,
+          nia: extracted,
           photoUrl: "",
           isDuplicate: false,
           isUnknown: true,
-          scannedUrl: data,
+          isInactive: false,
+          scannedUrl: rawUrl || extracted,
           method: "webview",
         });
       }
     },
-    [modal.visible, lastScanned, findMemberByUrlId, attendance]
+    [findMemberByUrlId, attendance]
+  );
+
+  const handleBarcodeScan = useCallback(
+    ({ data }: { data: string }) => {
+      if (cooldown.current || modal.visible) return;
+      if (data === lastScanned) return;
+      cooldown.current = true;
+      setLastScanned(data);
+      setTimeout(() => { cooldown.current = false; }, 2000);
+
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      processId(data, data);
+    },
+    [modal.visible, lastScanned, processId]
   );
 
   const handleConfirm = () => {
+    const member = findMemberByUrlId(modal.nia);
+    const status = member?.status ?? "";
     const result = markAttendance(
       { nia: modal.nia, name: modal.name, photoUrl: modal.photoUrl },
-      modal.method
+      modal.method,
+      status
     );
     Haptics.notificationAsync(
       result === "success"
@@ -133,42 +168,15 @@ export default function ScannerScreen() {
     setLastScanned("");
     cooldown.current = false;
     if (url) {
-      await WebBrowser.openBrowserAsync(
-        url.includes("://") ? url : `https://${url}`
-      );
+      const fullUrl = url.includes("://") ? url : `https://${url}`;
+      await WebBrowser.openBrowserAsync(fullUrl);
     }
   };
 
   const handleManualSubmit = () => {
     const nia = manualNia.trim();
     if (!nia) return;
-    const member = findMemberByUrlId(nia);
-    if (member) {
-      const isDuplicate = attendance.some(
-        (r) => r.nia.replace(/[.\-\s]/g, "") === member.nia.replace(/[.\-\s]/g, "")
-      );
-      setModal({
-        visible: true,
-        name: member.name,
-        nia: member.nia,
-        photoUrl: member.photoUrl,
-        isDuplicate,
-        isUnknown: false,
-        scannedUrl: "",
-        method: "manual",
-      });
-    } else {
-      setModal({
-        visible: true,
-        name: "",
-        nia,
-        photoUrl: "",
-        isDuplicate: false,
-        isUnknown: true,
-        scannedUrl: "",
-        method: "manual",
-      });
-    }
+    processId(nia, "");
     setManualNia("");
     setShowManual(false);
   };
@@ -178,7 +186,10 @@ export default function ScannerScreen() {
       <View
         style={[
           styles.permissionContainer,
-          { backgroundColor: colors.background, paddingTop: insets.top + 67 },
+          {
+            backgroundColor: colors.background,
+            paddingTop: insets.top + 67,
+          },
         ]}
       >
         <Feather name="camera-off" size={48} color={colors.mutedForeground} />
@@ -193,7 +204,7 @@ export default function ScannerScreen() {
             styles.manualButton,
             { backgroundColor: colors.primary, borderRadius: colors.radius },
           ]}
-          onPress={() => setShowManual(true)}
+          onPress={() => setShowManual((v) => !v)}
         >
           <Feather name="edit-3" size={16} color="#fff" />
           <Text style={styles.manualButtonText}>Input NIA Manual</Text>
@@ -202,13 +213,13 @@ export default function ScannerScreen() {
         {showManual && (
           <View
             style={[
-              styles.manualInput,
+              styles.manualInputBox,
               { borderColor: colors.border, borderRadius: colors.radius },
             ]}
           >
             <TextInput
               style={[styles.manualField, { color: colors.foreground }]}
-              placeholder="Ketik NIA..."
+              placeholder="Ketik NIA, contoh: 24.10136"
               placeholderTextColor={colors.mutedForeground}
               value={manualNia}
               onChangeText={setManualNia}
@@ -225,12 +236,17 @@ export default function ScannerScreen() {
           </View>
         )}
 
+        <Text style={[styles.urlHint, { color: colors.mutedForeground }]}>
+          Format URL barcode:{"\n"}https://www.peradi.org/ktpa?nia=24.10136
+        </Text>
+
         <MemberCard
           visible={modal.visible}
           name={modal.name}
           nia={modal.nia}
           photoUrl={modal.photoUrl}
           isDuplicate={modal.isDuplicate}
+          isInactive={modal.isInactive}
           isUnknown={modal.isUnknown}
           scannedUrl={modal.scannedUrl}
           onConfirm={handleConfirm}
@@ -291,11 +307,12 @@ export default function ScannerScreen() {
         onBarcodeScanned={handleBarcodeScan}
       />
 
-      {/* Overlay */}
       <View style={[styles.overlay, { paddingTop: insets.top }]}>
         {/* Header */}
         <View style={styles.scanHeader}>
-          <Text style={styles.scanHeaderTitle}>{eventName}</Text>
+          <Text style={styles.scanHeaderTitle} numberOfLines={1}>
+            {eventName}
+          </Text>
           <View style={styles.scanCountBadge}>
             <Feather name="users" size={13} color="#fff" />
             <Text style={styles.scanCountText}>{presentCount} Hadir</Text>
@@ -310,26 +327,27 @@ export default function ScannerScreen() {
             <View style={[styles.corner, styles.cornerBL]} />
             <View style={[styles.corner, styles.cornerBR]} />
           </View>
+          <Text style={styles.viewfinderHint}>
+            Arahkan ke QR barcode KTA Peradi
+          </Text>
         </View>
 
+        {/* Footer */}
         <View style={styles.scanFooter}>
-          <Text style={styles.scanHint}>
-            Arahkan kamera ke barcode KTA Peradi
-          </Text>
           <TouchableOpacity
             style={styles.manualTrigger}
             onPress={() => setShowManual((v) => !v)}
             activeOpacity={0.8}
           >
             <Feather name="edit-3" size={16} color="#fff" />
-            <Text style={styles.manualTriggerText}>Input Manual</Text>
+            <Text style={styles.manualTriggerText}>Input Manual NIA</Text>
           </TouchableOpacity>
 
           {showManual && (
             <View style={styles.manualRow}>
               <TextInput
                 style={styles.manualInputField}
-                placeholder="Ketik NIA..."
+                placeholder="Ketik NIA, contoh: 24.10136"
                 placeholderTextColor="rgba(255,255,255,0.5)"
                 value={manualNia}
                 onChangeText={setManualNia}
@@ -338,10 +356,7 @@ export default function ScannerScreen() {
                 onSubmitEditing={handleManualSubmit}
                 keyboardAppearance="dark"
               />
-              <TouchableOpacity
-                style={styles.manualGoBtn}
-                onPress={handleManualSubmit}
-              >
+              <TouchableOpacity style={styles.manualGoBtn} onPress={handleManualSubmit}>
                 <Feather name="arrow-right" size={20} color="#fff" />
               </TouchableOpacity>
             </View>
@@ -355,6 +370,7 @@ export default function ScannerScreen() {
         nia={modal.nia}
         photoUrl={modal.photoUrl}
         isDuplicate={modal.isDuplicate}
+        isInactive={modal.isInactive}
         isUnknown={modal.isUnknown}
         scannedUrl={modal.scannedUrl}
         onConfirm={handleConfirm}
@@ -411,48 +427,38 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    gap: 20,
   },
   viewfinder: {
     width: 260,
     height: 260,
     position: "relative",
   },
-  corner: {
-    position: "absolute",
-    width: CORNER,
-    height: CORNER,
-  },
+  corner: { position: "absolute", width: CORNER, height: CORNER },
   cornerTL: {
-    top: 0,
-    left: 0,
-    borderTopWidth: CORNER_THICK,
-    borderLeftWidth: CORNER_THICK,
-    borderColor: CORNER_COLOR,
-    borderTopLeftRadius: 6,
+    top: 0, left: 0,
+    borderTopWidth: CORNER_THICK, borderLeftWidth: CORNER_THICK,
+    borderColor: CORNER_COLOR, borderTopLeftRadius: 6,
   },
   cornerTR: {
-    top: 0,
-    right: 0,
-    borderTopWidth: CORNER_THICK,
-    borderRightWidth: CORNER_THICK,
-    borderColor: CORNER_COLOR,
-    borderTopRightRadius: 6,
+    top: 0, right: 0,
+    borderTopWidth: CORNER_THICK, borderRightWidth: CORNER_THICK,
+    borderColor: CORNER_COLOR, borderTopRightRadius: 6,
   },
   cornerBL: {
-    bottom: 0,
-    left: 0,
-    borderBottomWidth: CORNER_THICK,
-    borderLeftWidth: CORNER_THICK,
-    borderColor: CORNER_COLOR,
-    borderBottomLeftRadius: 6,
+    bottom: 0, left: 0,
+    borderBottomWidth: CORNER_THICK, borderLeftWidth: CORNER_THICK,
+    borderColor: CORNER_COLOR, borderBottomLeftRadius: 6,
   },
   cornerBR: {
-    bottom: 0,
-    right: 0,
-    borderBottomWidth: CORNER_THICK,
-    borderRightWidth: CORNER_THICK,
-    borderColor: CORNER_COLOR,
-    borderBottomRightRadius: 6,
+    bottom: 0, right: 0,
+    borderBottomWidth: CORNER_THICK, borderRightWidth: CORNER_THICK,
+    borderColor: CORNER_COLOR, borderBottomRightRadius: 6,
+  },
+  viewfinderHint: {
+    color: "rgba(255,255,255,0.7)",
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
   },
   scanFooter: {
     backgroundColor: "rgba(0,0,0,0.6)",
@@ -461,12 +467,6 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
     gap: 14,
     alignItems: "center",
-  },
-  scanHint: {
-    color: "rgba(255,255,255,0.75)",
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    textAlign: "center",
   },
   manualTrigger: {
     flexDirection: "row",
@@ -546,7 +546,7 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     fontSize: 15,
   },
-  manualInput: {
+  manualInputBox: {
     flexDirection: "row",
     gap: 8,
     width: "100%",
@@ -565,5 +565,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
+  },
+  urlHint: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+    lineHeight: 18,
+    marginTop: 8,
   },
 });

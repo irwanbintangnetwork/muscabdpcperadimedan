@@ -44,7 +44,7 @@ export default function TabLayout() {
           ) : null,
         tabBarLabelStyle: {
           fontFamily: "Inter_500Medium",
-          fontSize: 11,
+          fontSize: 10,
         },
       }}
     >
@@ -76,9 +76,18 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="voting"
+        options={{
+          title: "E-Voting",
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="check-square" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
-          title: "Pengaturan",
+          title: "Setting",
           tabBarIcon: ({ color, size }) => (
             <Feather name="settings" size={size} color={color} />
           ),

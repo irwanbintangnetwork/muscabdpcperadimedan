@@ -12,6 +12,7 @@ export interface Member {
   name: string;
   photoUrl: string;
   urlId: string;
+  status: string; // "Aktif" | "Tidak Aktif" | etc.
 }
 
 export interface AttendanceRecord {
@@ -23,6 +24,19 @@ export interface AttendanceRecord {
   method: "offline" | "webview" | "manual";
 }
 
+export interface Candidate {
+  id: string;
+  name: string;
+  nia: string;
+  voteCount: number;
+}
+
+export interface Vote {
+  voterNia: string;
+  candidateId: string;
+  timestamp: number;
+}
+
 interface Credentials {
   username: string;
   password: string;
@@ -32,6 +46,9 @@ interface AppContextType {
   isLoggedIn: boolean;
   members: Member[];
   attendance: AttendanceRecord[];
+  candidates: Candidate[];
+  votes: Vote[];
+  votingOpen: boolean;
   eventName: string;
   totalSeats: number;
   login: (username: string, password: string) => boolean;
@@ -39,8 +56,9 @@ interface AppContextType {
   importMembers: (members: Member[]) => void;
   markAttendance: (
     member: Pick<Member, "nia" | "name" | "photoUrl">,
-    method: "offline" | "webview" | "manual"
-  ) => "success" | "duplicate";
+    method: "offline" | "webview" | "manual",
+    status?: string
+  ) => "success" | "duplicate" | "inactive";
   removeAttendance: (nia: string) => void;
   clearAttendance: () => void;
   findMemberByUrlId: (urlId: string) => Member | undefined;
@@ -48,6 +66,11 @@ interface AppContextType {
   updateEventName: (name: string) => void;
   updateTotalSeats: (total: number) => void;
   updateCredentials: (username: string, password: string) => void;
+  addCandidate: (name: string, nia: string) => void;
+  removeCandidate: (id: string) => void;
+  castVote: (voterNia: string, candidateId: string) => "success" | "duplicate" | "not_present" | "voting_closed";
+  toggleVoting: () => void;
+  clearVotes: () => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -58,12 +81,24 @@ const STORAGE_KEYS = {
   credentials: "@peradi_credentials",
   eventName: "@peradi_event_name",
   totalSeats: "@peradi_total_seats",
+  candidates: "@peradi_candidates",
+  votes: "@peradi_votes",
+  votingOpen: "@peradi_voting_open",
 };
 
 const DEFAULT_CREDENTIALS: Credentials = {
   username: "admin",
   password: "peradi2024",
 };
+
+const DEFAULT_CANDIDATES: Candidate[] = [
+  {
+    id: "cand-001",
+    name: "Supriono, S.H.",
+    nia: "24.10740",
+    voteCount: 0,
+  },
+];
 
 function normalizeId(id: string): string {
   return id.replace(/[.\-\s]/g, "").toLowerCase();
@@ -73,23 +108,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
-  const [credentials, setCredentials] =
-    useState<Credentials>(DEFAULT_CREDENTIALS);
-  const [eventName, setEventName] = useState<string>(
-    "Musyawarah Cabang DPC Peradi SAI"
-  );
+  const [credentials, setCredentials] = useState<Credentials>(DEFAULT_CREDENTIALS);
+  const [eventName, setEventName] = useState<string>("Musyawarah Cabang DPC PERADI SAI Medan");
   const [totalSeats, setTotalSeats] = useState<number>(0);
+  const [candidates, setCandidates] = useState<Candidate[]>(DEFAULT_CANDIDATES);
+  const [votes, setVotes] = useState<Vote[]>([]);
+  const [votingOpen, setVotingOpen] = useState<boolean>(false);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [membersData, attendanceData, credData, evName, seats] =
+        const [membersData, attendanceData, credData, evName, seats, candData, voteData, votingOpenData] =
           await Promise.all([
             AsyncStorage.getItem(STORAGE_KEYS.members),
             AsyncStorage.getItem(STORAGE_KEYS.attendance),
             AsyncStorage.getItem(STORAGE_KEYS.credentials),
             AsyncStorage.getItem(STORAGE_KEYS.eventName),
             AsyncStorage.getItem(STORAGE_KEYS.totalSeats),
+            AsyncStorage.getItem(STORAGE_KEYS.candidates),
+            AsyncStorage.getItem(STORAGE_KEYS.votes),
+            AsyncStorage.getItem(STORAGE_KEYS.votingOpen),
           ]);
 
         if (membersData) setMembers(JSON.parse(membersData));
@@ -97,6 +135,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (credData) setCredentials(JSON.parse(credData));
         if (evName) setEventName(evName);
         if (seats) setTotalSeats(parseInt(seats, 10));
+        if (candData) setCandidates(JSON.parse(candData));
+        if (voteData) setVotes(JSON.parse(voteData));
+        if (votingOpenData) setVotingOpen(votingOpenData === "true");
       } catch {}
     };
     load();
@@ -120,17 +161,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const importMembers = useCallback(async (newMembers: Member[]) => {
     setMembers(newMembers);
-    await AsyncStorage.setItem(
-      STORAGE_KEYS.members,
-      JSON.stringify(newMembers)
-    );
+    await AsyncStorage.setItem(STORAGE_KEYS.members, JSON.stringify(newMembers));
   }, []);
 
   const markAttendance = useCallback(
     (
       member: Pick<Member, "nia" | "name" | "photoUrl">,
-      method: "offline" | "webview" | "manual"
-    ): "success" | "duplicate" => {
+      method: "offline" | "webview" | "manual",
+      status?: string
+    ): "success" | "duplicate" | "inactive" => {
+      // Check status from member record if not provided
+      let memberStatus = status;
+      if (!memberStatus) {
+        setMembers((prev) => {
+          const found = prev.find(
+            (m) => normalizeId(m.nia) === normalizeId(member.nia)
+          );
+          if (found) memberStatus = found.status;
+          return prev;
+        });
+      }
+
+      if (
+        memberStatus &&
+        memberStatus.toLowerCase() !== "aktif" &&
+        memberStatus !== ""
+      ) {
+        return "inactive";
+      }
+
       let isDuplicate = false;
       setAttendance((prev) => {
         const exists = prev.some(
@@ -213,12 +272,95 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const addCandidate = useCallback(async (name: string, nia: string) => {
+    const newCand: Candidate = {
+      id: Date.now().toString(),
+      name,
+      nia,
+      voteCount: 0,
+    };
+    setCandidates((prev) => {
+      const updated = [...prev, newCand];
+      AsyncStorage.setItem(STORAGE_KEYS.candidates, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  const removeCandidate = useCallback(async (id: string) => {
+    setCandidates((prev) => {
+      const updated = prev.filter((c) => c.id !== id);
+      AsyncStorage.setItem(STORAGE_KEYS.candidates, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  const castVote = useCallback(
+    (voterNia: string, candidateId: string): "success" | "duplicate" | "not_present" | "voting_closed" => {
+      if (!votingOpen) return "voting_closed";
+
+      let result: "success" | "duplicate" | "not_present" = "success";
+
+      setAttendance((att) => {
+        const isPresent = att.some((r) => normalizeId(r.nia) === normalizeId(voterNia));
+        if (!isPresent) {
+          result = "not_present";
+          return att;
+        }
+        return att;
+      });
+
+      if (result === "not_present") return "not_present";
+
+      setVotes((prev) => {
+        const alreadyVoted = prev.some((v) => normalizeId(v.voterNia) === normalizeId(voterNia));
+        if (alreadyVoted) {
+          result = "duplicate";
+          return prev;
+        }
+        const vote: Vote = { voterNia, candidateId, timestamp: Date.now() };
+        const updated = [...prev, vote];
+        AsyncStorage.setItem(STORAGE_KEYS.votes, JSON.stringify(updated));
+        return updated;
+      });
+
+      if (result === "duplicate") return "duplicate";
+
+      setCandidates((prev) => {
+        const updated = prev.map((c) =>
+          c.id === candidateId ? { ...c, voteCount: c.voteCount + 1 } : c
+        );
+        AsyncStorage.setItem(STORAGE_KEYS.candidates, JSON.stringify(updated));
+        return updated;
+      });
+
+      return "success";
+    },
+    [votingOpen]
+  );
+
+  const toggleVoting = useCallback(async () => {
+    setVotingOpen((prev) => {
+      const next = !prev;
+      AsyncStorage.setItem(STORAGE_KEYS.votingOpen, next.toString());
+      return next;
+    });
+  }, []);
+
+  const clearVotes = useCallback(async () => {
+    setVotes([]);
+    setCandidates((prev) => prev.map((c) => ({ ...c, voteCount: 0 })));
+    await AsyncStorage.removeItem(STORAGE_KEYS.votes);
+  }, []);
+
   return (
     <AppContext.Provider
       value={{
         isLoggedIn,
         members,
         attendance,
+        candidates,
+        votes,
+        votingOpen,
         eventName,
         totalSeats,
         login,
@@ -232,6 +374,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         updateEventName,
         updateTotalSeats,
         updateCredentials,
+        addCandidate,
+        removeCandidate,
+        castVote,
+        toggleVoting,
+        clearVotes,
       }}
     >
       {children}
