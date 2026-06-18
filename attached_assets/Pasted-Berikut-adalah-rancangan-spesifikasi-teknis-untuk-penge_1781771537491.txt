@@ -1,0 +1,54 @@
+Berikut adalah rancangan spesifikasi teknis untuk pengembangan aplikasi (APK) Android yang dirancang khusus untuk mengelola presensi dan jalannya Musyawarah Cabang (Muscab), terutama yang melibatkan agenda krusial seperti rapat pergantian pengurus.
+
+Mengingat ID Card anggota sudah terintegrasi dengan barcode yang mengarah ke website verifikasi (menampilkan Foto, NIA, dan Nama), aplikasi ini akan bertindak sebagai "jembatan" untuk membaca data tersebut dan mencatat kehadiran secara *real-time*.
+
+### 1. Alur Kerja Sistem (Workflow)
+
+* **Pemindaian (Scanning):** Panitia menggunakan kamera *smartphone* melalui aplikasi untuk memindai barcode pada ID Card Advokat.
+* **Ekstraksi Data:** Aplikasi membaca tautan (URL) dari barcode tersebut, mengekstrak Nomor Induk Advokat (NIA) atau ID unik dari URL tersebut.
+* **Validasi & Tampilan:** Aplikasi menarik data dari *database* atau API website yang sudah ada, lalu menampilkan **Foto, Nama, dan NIA** di layar perangkat panitia untuk pencocokan wajah secara fisik.
+* **Pencatatan Kehadiran:** Jika cocok, panitia menekan tombol "Konfirmasi", dan status anggota berubah menjadi "Hadir". Sistem otomatis menolak jika barcode yang sama dipindai dua kali (*double scan protection*).
+
+---
+
+### 2. Fitur Utama Aplikasi (Core Features)
+
+* **Sistem Login Panitia:** Akses khusus menggunakan *username* dan *password* untuk memastikan hanya panitia berwenang yang bisa melakukan proses *check-in*.
+* **Modul Pemindai Super Cepat (Fast Scanner):** Menggunakan integrasi API pemindai cerdas yang responsif terhadap berbagai kondisi cahaya ruangan acara.
+* **Dashboard Kuorum Real-Time:** Menampilkan total anggota DPC yang terdaftar, total yang sudah hadir, dan persentase kuorum. Ini sangat krusial untuk menentukan sah atau tidaknya keputusan dan agenda pemilihan.
+* **Riwayat Presensi (Log):** Daftar *scrollable* yang menampilkan siapa saja yang baru saja berhasil masuk ke ruang sidang.
+* **Mode Offline/Sync (Opsional):** Jika koneksi internet di lokasi hotel atau gedung acara tidak stabil, aplikasi dapat menyimpan data *scan* sementara dan melakukan sinkronisasi otomatis saat jaringan kembali stabil.
+* **Integrasi Modul E-Voting (Opsional):** Setelah anggota terverifikasi hadir, aplikasi dapat memberikan akses (berupa PIN atau token digital) bagi anggota tersebut untuk memberikan suara secara elektronik saat agenda pemilihan ketua baru dimulai.
+
+---
+
+### 3. Spesifikasi Teknis (Tech Stack)
+
+**Sisi Aplikasi (Front-End Mobile):**
+
+* **Platform:** Android (Minimum OS Android 8.0 Oreo agar kompatibel dengan berbagai perangkat panitia).
+* **Framework:** Flutter atau Kotlin. (Flutter sangat disarankan untuk pembuatan UI yang interaktif dan responsif).
+* **Library Scanner:** **Google ML Kit Vision API** atau **ZXing**. ML Kit lebih disarankan karena kecepatan fokusnya yang luar biasa dalam membaca barcode/QR Code meskipun terlipat atau sedikit buram.
+
+**Sisi Server & Database (Back-End):**
+
+* **Framework:** PHP (Laravel) atau Node.js.
+* **Database:** MySQL atau PostgreSQL (bisa menggunakan *database* yang sama dengan website profil anggota saat ini agar sinkron).
+* **API (Application Programming Interface):** Perlu dibuatkan RESTful API berformat JSON pada server *website* saat ini agar aplikasi Android dapat "berkomunikasi" dan menarik data Foto, Nama, dan NIA secara instan tanpa harus memuat seluruh tampilan halaman web.
+
+**Keamanan (Security):**
+
+* Autentikasi token (JWT) antara aplikasi Android dan server.
+* Pencegahan manipulasi URL barcode.
+
+---
+
+### 4. Kebutuhan Perangkat Keras Panitia
+
+Untuk menjalankan aplikasi ini dengan lancar di meja registrasi, perangkat yang digunakan panitia sebaiknya memiliki spesifikasi minimum:
+
+* Kamera minimal 8 MP dengan fitur *Autofocus* yang baik.
+* RAM minimal 3 GB.
+* Koneksi internet yang stabil (sangat disarankan menggunakan *router* Wi-Fi khusus yang terdedikasi untuk panitia registrasi, terpisah dari Wi-Fi publik).
+
+Secara teknis, agar sistem berjalan mulus, apakah *website* yang saat ini menampilkan data anggota tersebut sudah memiliki jalur API, atau apakah tim pengembang perlu membuatkan jalur ekstraksi data secara khusus dari tautan web tersebut?

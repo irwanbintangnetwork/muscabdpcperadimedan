@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "3ipl4cTV7A967Hek5HXSq"
+uri = "file://artifacts/peradi-hadir/assets/images/icon.png"
+type = "image"
+title = "peradi app icon"
