@@ -1,0 +1,119 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type (debug or release)'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: 📚 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: ✅ TypeScript check
+        run: pnpm run typecheck
+
+      - name: 🏗️ Build web application
+        run: pnpm run build
+
+      - name: ☕ Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+
+      - name: 📱 Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 34
+          ndk-version: '25.2.9519653'
+
+      - name: 🚀 Initialize Capacitor
+        run: |
+          npm install -g @capacitor/cli
+          npx cap init --web-dir dist
+          npx cap add android
+        working-directory: ./
+
+      - name: 📥 Copy web assets to Android
+        run: npx cap copy android
+
+      - name: 🔨 Build APK (Debug)
+        if: github.event.inputs.build_type == 'debug' || github.event_name == 'push'
+        run: |
+          cd ./android
+          chmod +x ./gradlew
+          ./gradlew assembleDebug
+
+      - name: 🔨 Build APK (Release)
+        if: github.event.inputs.build_type == 'release'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "⚠️ Warning: Keystore secrets not configured. Building unsigned APK."
+            cd ./android
+            chmod +x ./gradlew
+            ./gradlew assembleRelease
+          else
+            echo "$KEYSTORE_BASE64" | base64 -d > ./android/app/keystore.jks
+            cd ./android
+            chmod +x ./gradlew
+            ./gradlew assembleRelease \
+              -Pandroid.injected.signing.store.file="$PWD/app/keystore.jks" \
+              -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+              -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+              -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+          fi
+
+      - name: 📤 Upload APK artifact (Debug)
+        if: github.event.inputs.build_type == 'debug' || github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug.apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 5
+
+      - name: 📤 Upload APK artifact (Release)
+        if: github.event.inputs.build_type == 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release.apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 30
+
+      - name: ✅ Build success
+        run: echo "✅ APK build completed successfully!"
