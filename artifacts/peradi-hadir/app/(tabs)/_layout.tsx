@@ -76,6 +76,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="agenda"
+        options={{
+          title: "Agenda",
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="calendar" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="voting"
         options={{
           title: "E-Voting",
