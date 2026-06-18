@@ -15,6 +15,15 @@ export interface Member {
   status: string; // "Aktif" | "Tidak Aktif" | etc.
 }
 
+export interface AgendaItem {
+  id: string;
+  time: string;
+  title: string;
+  description: string;
+  status: "menunggu" | "berlangsung" | "selesai";
+  order: number;
+}
+
 export interface AttendanceRecord {
   id: string;
   nia: string;
@@ -51,6 +60,7 @@ interface AppContextType {
   votingOpen: boolean;
   eventName: string;
   totalSeats: number;
+  agendaItems: AgendaItem[];
   login: (username: string, password: string) => boolean;
   logout: () => void;
   importMembers: (members: Member[]) => void;
@@ -71,6 +81,10 @@ interface AppContextType {
   castVote: (voterNia: string, candidateId: string) => "success" | "duplicate" | "not_present" | "voting_closed";
   toggleVoting: () => void;
   clearVotes: () => void;
+  updateAgendaStatus: (id: string, status: AgendaItem["status"]) => void;
+  addAgendaItem: (item: Omit<AgendaItem, "id">) => void;
+  removeAgendaItem: (id: string) => void;
+  resetAgenda: () => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -84,7 +98,21 @@ const STORAGE_KEYS = {
   candidates: "@peradi_candidates",
   votes: "@peradi_votes",
   votingOpen: "@peradi_voting_open",
+  agendaItems: "@peradi_agenda_items",
 };
+
+const DEFAULT_AGENDA: AgendaItem[] = [
+  { id: "ag-01", order: 1, time: "08.00", title: "Pendaftaran & Registrasi Peserta", description: "Registrasi dan pengambilan kartu peserta", status: "menunggu" },
+  { id: "ag-02", order: 2, time: "09.00", title: "Pembukaan Musyawarah Cabang", description: "Sambutan Ketua DPC PERADI SAI Medan & laporan kepanitian", status: "menunggu" },
+  { id: "ag-03", order: 3, time: "09.30", title: "Sidang Pleno I — Pengesahan Kuorum", description: "Verifikasi kuorum 50%+1 dari peserta yang sah", status: "menunggu" },
+  { id: "ag-04", order: 4, time: "10.00", title: "Sidang Pleno II — Tata Tertib", description: "Pengesahan tata tertib Musyawarah Cabang", status: "menunggu" },
+  { id: "ag-05", order: 5, time: "10.30", title: "Sidang Pleno III — LPJ Pengurus", description: "Laporan Pertanggungjawaban Pengurus DPC periode 2019–2024", status: "menunggu" },
+  { id: "ag-06", order: 6, time: "12.00", title: "Ishoma", description: "Istirahat, Sholat, dan Makan Siang", status: "menunggu" },
+  { id: "ag-07", order: 7, time: "13.00", title: "Sidang Pleno IV — Program Kerja", description: "Penyusunan program kerja DPC periode berikutnya", status: "menunggu" },
+  { id: "ag-08", order: 8, time: "14.00", title: "Pemilihan Ketua DPC (E-Voting)", description: "Pemilihan Ketua DPC PERADI SAI Medan periode 2025–2030", status: "menunggu" },
+  { id: "ag-09", order: 9, time: "15.00", title: "Pelantikan & Serah Terima Jabatan", description: "Pelantikan Ketua terpilih dan serah terima jabatan", status: "menunggu" },
+  { id: "ag-10", order: 10, time: "15.30", title: "Penutupan", description: "Doa penutup dan foto bersama", status: "menunggu" },
+];
 
 const DEFAULT_CREDENTIALS: Credentials = {
   username: "admin",
@@ -114,11 +142,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [candidates, setCandidates] = useState<Candidate[]>(DEFAULT_CANDIDATES);
   const [votes, setVotes] = useState<Vote[]>([]);
   const [votingOpen, setVotingOpen] = useState<boolean>(false);
+  const [agendaItems, setAgendaItems] = useState<AgendaItem[]>(DEFAULT_AGENDA);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [membersData, attendanceData, credData, evName, seats, candData, voteData, votingOpenData] =
+        const [membersData, attendanceData, credData, evName, seats, candData, voteData, votingOpenData, agendaData] =
           await Promise.all([
             AsyncStorage.getItem(STORAGE_KEYS.members),
             AsyncStorage.getItem(STORAGE_KEYS.attendance),
@@ -128,6 +157,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             AsyncStorage.getItem(STORAGE_KEYS.candidates),
             AsyncStorage.getItem(STORAGE_KEYS.votes),
             AsyncStorage.getItem(STORAGE_KEYS.votingOpen),
+            AsyncStorage.getItem(STORAGE_KEYS.agendaItems),
           ]);
 
         if (membersData) setMembers(JSON.parse(membersData));
@@ -138,6 +168,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (candData) setCandidates(JSON.parse(candData));
         if (voteData) setVotes(JSON.parse(voteData));
         if (votingOpenData) setVotingOpen(votingOpenData === "true");
+        if (agendaData) setAgendaItems(JSON.parse(agendaData));
       } catch {}
     };
     load();
@@ -352,6 +383,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.removeItem(STORAGE_KEYS.votes);
   }, []);
 
+  const updateAgendaStatus = useCallback(async (id: string, status: AgendaItem["status"]) => {
+    setAgendaItems((prev) => {
+      const updated = prev.map((item) => item.id === id ? { ...item, status } : item);
+      AsyncStorage.setItem(STORAGE_KEYS.agendaItems, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  const addAgendaItem = useCallback(async (item: Omit<AgendaItem, "id">) => {
+    const newItem: AgendaItem = { ...item, id: `ag-${Date.now()}` };
+    setAgendaItems((prev) => {
+      const updated = [...prev, newItem].sort((a, b) => a.order - b.order);
+      AsyncStorage.setItem(STORAGE_KEYS.agendaItems, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  const removeAgendaItem = useCallback(async (id: string) => {
+    setAgendaItems((prev) => {
+      const updated = prev.filter((item) => item.id !== id);
+      AsyncStorage.setItem(STORAGE_KEYS.agendaItems, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  const resetAgenda = useCallback(async () => {
+    setAgendaItems(DEFAULT_AGENDA);
+    await AsyncStorage.setItem(STORAGE_KEYS.agendaItems, JSON.stringify(DEFAULT_AGENDA));
+  }, []);
+
   return (
     <AppContext.Provider
       value={{
@@ -363,6 +424,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         votingOpen,
         eventName,
         totalSeats,
+        agendaItems,
         login,
         logout,
         importMembers,
@@ -379,6 +441,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         castVote,
         toggleVoting,
         clearVotes,
+        updateAgendaStatus,
+        addAgendaItem,
+        removeAgendaItem,
+        resetAgenda,
       }}
     >
       {children}
