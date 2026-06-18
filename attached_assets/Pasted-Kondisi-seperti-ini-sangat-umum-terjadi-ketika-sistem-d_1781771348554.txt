@@ -1,0 +1,39 @@
+Kondisi seperti ini sangat umum terjadi ketika sistem dikelola terpusat oleh pusat (DPN), sementara cabang tidak memiliki akses *backend*.
+
+Mengingat kelancaran presensi sangat krusial untuk menentukan kuorum dalam rapat pergantian pengurus DPC Peradi SAI nanti, kita tidak bisa bergantung pada API. Namun, aplikasi tetap bisa dibangun dengan menggunakan **metode *workaround* (jalan pintas)** tanpa perlu menyentuh atau meminta izin akses ke *server* DPN.
+
+Berikut adalah tiga solusi teknis yang bisa diterapkan, dari yang paling canggih hingga yang paling sederhana:
+
+### Opsi 1: Teknik *Web Scraping* (Membaca Elemen HTML)
+
+Karena aplikasi tidak bisa meminta data mentah via API, aplikasi akan diprogram untuk "membaca" halaman *website* layaknya manusia, namun secara otomatis dan instan.
+
+* **Cara Kerja:** Saat barcode dipindai, aplikasi akan diam-diam membuka tautan tersebut di latar belakang, mencari elemen HTML spesifik (misalnya div class "foto-anggota" atau tag "nama-advokat"), menyedot teks dan foto tersebut, lalu menampilkannya di layar aplikasi panitia dengan desain antarmuka (UI) kita sendiri.
+* **Kelebihan:** Tampilan di aplikasi panitia akan sangat rapi dan seragam.
+* **Kelemahan (Risiko Tinggi):** Jika H-1 acara pihak DPN tiba-tiba mengubah desain *website* atau mengubah struktur kodenya, fitur ekstraksi data ini akan langsung gagal berfungsi (error) karena aplikasi tidak lagi mengenali letak datanya.
+
+### Opsi 2: Database Mandiri Berbasis Excel (Paling Direkomendasikan)
+
+Daripada bergantung pada *website* DPN saat *check-in*, kita membuat "tiruan" data *offline* khusus untuk keperluan registrasi acara ini.
+
+* **Cara Kerja:** 1. Sebelum acara, panitia menyiapkan file Excel berisi daftar anggota DPC (Nama, NIA).
+2. Pada *link* barcode di ID Card, biasanya terdapat nomor unik (misalnya: `peradisai.org/member/12345`). Nomor `12345` ini diinput juga ke dalam Excel tersebut.
+3. File Excel ini dimasukkan ke dalam sistem *database* lokal aplikasi.
+4. Saat hari H, ketika barcode dipindai, aplikasi hanya membaca "nomor unik" dari tautan tersebut, lalu langsung mencocokkannya dengan *database* lokal kita secara instan.
+* **Kelebihan:** **Sangat cepat (hitungan milidetik), 100% anti-gagal, dan bisa berjalan penuh secara *offline*** jika koneksi internet di lokasi gedung tiba-tiba terputus. Data juga murni dalam kendali panitia DPC.
+* **Kelemahan:** Membutuhkan kerja ekstra di awal bagi panitia untuk merekap dan menyinkronkan data Excel dengan nomor seri di ID Card anggota. Foto mungkin tidak muncul kecuali tautan fotonya juga dimasukkan ke Excel.
+
+### Opsi 3: Integrasi *In-App Browser* (WebView Overlay)
+
+Ini adalah solusi paling sederhana, paling murah, dan paling cepat untuk dikembangkan.
+
+* **Cara Kerja:** Saat panitia memindai barcode, aplikasi tidak mencoba mengekstrak data apa pun. Aplikasi hanya akan membuka sebuah "jendela *browser* kecil" (*WebView*) di dalam aplikasi itu sendiri yang memuat halaman *website* DPN tersebut.
+* Di bagian bawah layar *browser* kecil tersebut, aplikasi menyediakan dua tombol statis milik kita sendiri: **"Hadir"** dan **"Batal"**.
+* **Kelebihan:** Sangat mudah dibuat. Tidak peduli DPN mengubah desain *website* seribu kali pun, sistem akan tetap berjalan lancar karena kita hanya menumpang menampilkan halaman *website* mereka.
+* **Kelemahan:** Kecepatan *loading* sangat bergantung pada kecepatan internet di meja registrasi dan kecepatan *server* DPN. Jika *server* DPN sedang lambat, antrean registrasi bisa mengular.
+
+---
+
+Untuk memastikan tidak ada hambatan teknis yang bisa menunda atau mengganggu jalannya agenda, efisiensi waktu di meja registrasi adalah kunci.
+
+Melihat ketiga skema di atas, apakah Bapak lebih mengutamakan kecepatan dan keamanan jaringan dengan membuat rekap data mandiri (Opsi 2), atau lebih memilih kemudahan pengembangan dengan metode *browser* internal (Opsi 3)?
