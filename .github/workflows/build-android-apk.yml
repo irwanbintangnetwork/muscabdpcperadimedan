@@ -1,0 +1,43 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        type: choice
+        options: [debug, release]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '18' }
+      - uses: pnpm/action-setup@v2
+        with: { version: 8 }
+      
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm run build
+      
+      - uses: actions/setup-java@v4
+        with: { distribution: 'temurin', java-version: '11' }
+      - uses: android-actions/setup-android@v3
+        with: { api-level: 34 }
+      
+      - run: npm install -g @capacitor/cli
+      - run: npx cap init --web-dir dist
+      - run: npx cap add android
+      - run: npx cap copy android
+      
+      - run: cd android && chmod +x ./gradlew && ./gradlew assembleDebug
+        if: github.event.inputs.build_type != 'release'
+      
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-debug.apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
